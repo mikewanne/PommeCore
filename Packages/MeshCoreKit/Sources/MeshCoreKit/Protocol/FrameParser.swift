@@ -570,6 +570,16 @@ public enum FrameParser {
         return .sent(type: type, expectedACK: expectedACK, suggestedTimeout: suggestedTimeout)
     }
 
+    /// For txt_type 2 (TXT_TYPE_SIGNED_PLAIN, e.g. room-server posts) the
+    /// companion inserts the first 4 bytes of the author's public key before
+    /// the UTF-8 text. They must be skipped before decoding, otherwise the
+    /// binary bytes end up in the text or make UTF-8 decoding fail entirely
+    /// (see docs/companion_protocol.md, "Contact Message Format").
+    private static func skipSignedAuthorPrefix(txtType: UInt8, data: Data, offset: inout Int) {
+        guard txtType == 2 else { return }
+        offset = min(offset + 4, data.count)
+    }
+
     /// RESP_CODE_CONTACT_MSG_RECV_V3 (code 16) — received direct message.
     /// Layout: SNR(1) reserved(2) pubkey_prefix(6) path_len(1) txt_type(1) sender_timestamp(uint32) text
     private static func parseContactMsgRecvV3(_ data: Data) -> ParsedResponse {
@@ -582,6 +592,7 @@ public enum FrameParser {
         let pathLen = readUInt8(data, offset: &offset)
         let txtType = readUInt8(data, offset: &offset)
         let senderTimestamp = readUInt32(data, offset: &offset)
+        skipSignedAuthorPrefix(txtType: txtType, data: data, offset: &offset)
         let text: String
         if offset < data.count {
             text = String(data: Data(data[offset...]), encoding: .utf8)?
@@ -772,6 +783,7 @@ public enum FrameParser {
 
         // sender_timestamp: uint32
         let senderTimestamp = readUInt32(data, offset: &offset)
+        skipSignedAuthorPrefix(txtType: txtType, data: data, offset: &offset)
 
         // text: remainder of frame
         let text: String
